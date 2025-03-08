@@ -1,1 +1,153 @@
-import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField } from 'discord.js';// Sta≥a: prÛg zg≥oszeÒ do banaconst BAN_THRESHOLD = 10;// Interfejsy dla danych uøytkownikaconst userData = new Map();const client = new Client({    intents: [        GatewayIntentBits.Guilds,        GatewayIntentBits.GuildMessages,        GatewayIntentBits.MessageContent,        GatewayIntentBits.GuildMembers    ]});// Obs≥uga komendy !@ (panel zarzπdzania uøytkownikiem)client.on('messageCreate', async (message) => {    if (message.content.startsWith('!@')) {        const mentionedUser = message.mentions.users.first() || message.guild?.members.cache.get(message.content.split(' ')[1]);        if (!mentionedUser) {            message.reply('Nie znaleziono uøytkownika!');            return;        }        const userInfo = userData.get(mentionedUser.id) || {            warnings: [],            mutes: 0,            flaggedAsUnverified: false,            reports: new Set()        };        const embed = new EmbedBuilder()            .setColor('#0099ff')            .setTitle(`Informacje o ${mentionedUser.tag}`)            .addFields(                { name: 'Liczba warnÛw', value: userInfo.warnings.length.toString(), inline: true },                { name: 'Liczba mutÛw', value: userInfo.mutes.toString(), inline: true },                { name: 'Liczba zg≥oszeÒ', value: userInfo.reports.size.toString(), inline: true }            );        if (userInfo.warnings.length > 0) {            embed.addFields({                name: 'Ostatnie warny',                value: userInfo.warnings.map(w => `PowÛd: ${w.reason}, Wydane przez: ${w.issuedBy}, Data: ${w.date}`).join('\n\n')            });        }        const row = new ActionRowBuilder()            .addComponents(                new ButtonBuilder()                    .setCustomId(`warn_${mentionedUser.id}`)                    .setLabel('Warn')                    .setStyle(ButtonStyle.Danger),                new ButtonBuilder()                    .setCustomId(`mute_${mentionedUser.id}`)                    .setLabel('Mute')                    .setStyle(ButtonStyle.Secondary),                new ButtonBuilder()                    .setCustomId(`report_${mentionedUser.id}`)                    .setLabel('Zg≥oú')                    .setStyle(ButtonStyle.Primary)            );        await message.reply({ embeds: [embed], components: [row] });    }});// Obs≥uga przyciskÛw w paneluclient.on('interactionCreate', async (interaction) => {    if (!interaction.isButton()) return;    const [action, targetUserId] = interaction.customId.split('_');    const targetUser = interaction.guild.members.cache.get(targetUserId)?.user;    if (!targetUser) {        await interaction.reply({ content: 'Nie znaleziono uøytkownika!', ephemeral: true });        return;    }    const userInfo = userData.get(targetUserId) || {        warnings: [],        mutes: 0,        flaggedAsUnverified: false,        reports: new Set()    };    switch (action) {        case 'warn': {            const reason = 'Przyk≥adowy powÛd'; // Moøesz dodaÊ modal do wpisania powodu            userInfo.warnings.push({                reason,                issuedBy: interaction.user.tag,                date: new Date().toLocaleString()            });            userData.set(targetUserId, userInfo);            await interaction.reply(`Uøytkownik ${targetUser.tag} otrzyma≥ ostrzeøenie: ${reason}`);            break;        }        case 'mute': {            if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {                await interaction.reply({ content: 'Nie masz uprawnieÒ do wyciszania uøytkownikÛw!', ephemeral: true });                return;            }            const muteRole = interaction.guild.roles.cache.find(r => r.name === 'Muted');            if (!muteRole) {                await interaction.reply({ content: 'Rola "Muted" nie zosta≥a znaleziona!', ephemeral: true });                return;            }            const member = interaction.guild.members.cache.get(targetUserId);            if (member) {                await member.roles.add(muteRole, 'Mute przez bota');                userInfo.mutes += 1;                userData.set(targetUserId, userInfo);                await interaction.reply(`Uøytkownik ${targetUser.tag} zosta≥ wyciszony.`);            } else {                await interaction.reply('Nie znaleziono uøytkownika na serwerze.');            }            break;        }        case 'report': {            if (userInfo.reports.has(interaction.user.id)) {                await interaction.reply({ content: 'Juø zg≥osi≥eú tego uøytkownika!', ephemeral: true });                return;            }            userInfo.reports.add(interaction.user.id);            userData.set(targetUserId, userInfo);            await interaction.reply(`Zg≥osi≥eú uøytkownika ${targetUser.tag}. Liczba zg≥oszeÒ: ${userInfo.reports.size}/${BAN_THRESHOLD}`);            if (userInfo.reports.size >= BAN_THRESHOLD) {                try {                    await interaction.guild.members.ban(targetUserId, { reason: 'Przekroczenie progu zg≥oszeÒ.' });                    await interaction.followUp(`Uøytkownik ${targetUser.tag} zosta≥ zbanowany za przekroczenie limitu zg≥oszeÒ.`);                } catch (error) {                    console.error(`Nie uda≥o siÍ zbanowaÊ uøytkownika: ${error}`);                }            }            break;        }    }});// Logowanie botaclient.login('MTMzMjk0MDgyMjgzMTY5NzkzMA.GI2nnU.xgXOIq-o9ytmULSb__7u-BMqpInMv-5qgBeFa8');
+import { Client, GatewayIntentBits, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, PermissionsBitField } from 'discord.js';
+import dotenv from 'dotenv';
+
+// Wczytaj zmienne ≈õrodowiskowe
+dotenv.config();
+
+// Sta≈Ça: pr√≥g zg≈Çosze≈Ñ do bana
+const BAN_THRESHOLD = 10;
+
+// Mapa danych u≈ºytkownik√≥w
+const userData = new Map();
+
+const client = new Client({
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMembers
+    ]
+});
+
+// Obs≈Çuga komendy !@ (panel zarzƒÖdzania u≈ºytkownikiem)
+client.on('messageCreate', async (message) => {
+    if (message.content.startsWith('!@')) {
+        const mentionedUser = message.mentions.users.first() || message.guild?.members.cache.get(message.content.split(' ')[1]);
+
+        if (!mentionedUser) {
+            message.reply('Nie znaleziono u≈ºytkownika!');
+            return;
+        }
+
+        const userInfo = userData.get(mentionedUser.id) || {
+            warnings: [],
+            mutes: 0,
+            flaggedAsUnverified: false,
+            reports: new Set()
+        };
+
+        const embed = new EmbedBuilder()
+            .setColor('#0099ff')
+            .setTitle(`Informacje o ${mentionedUser.tag}`)
+            .addFields(
+                { name: 'Liczba warn√≥w', value: userInfo.warnings.length.toString(), inline: true },
+                { name: 'Liczba mut√≥w', value: userInfo.mutes.toString(), inline: true },
+                { name: 'Liczba zg≈Çosze≈Ñ', value: userInfo.reports.size.toString(), inline: true }
+            );
+
+        if (userInfo.warnings.length > 0) {
+            embed.addFields({
+                name: 'Ostatnie warny',
+                value: userInfo.warnings.map(w => `Pow√≥d: ${w.reason}, Wydane przez: ${w.issuedBy}, Data: ${w.date}`).join('\n\n')
+            });
+        }
+
+        const row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId(`warn_${mentionedUser.id}`)
+                    .setLabel('Warn')
+                    .setStyle(ButtonStyle.Danger),
+                new ButtonBuilder()
+                    .setCustomId(`mute_${mentionedUser.id}`)
+                    .setLabel('Mute')
+                    .setStyle(ButtonStyle.Secondary),
+                new ButtonBuilder()
+                    .setCustomId(`report_${mentionedUser.id}`)
+                    .setLabel('Zg≈Ço≈õ')
+                    .setStyle(ButtonStyle.Primary)
+            );
+
+        await message.reply({ embeds: [embed], components: [row] });
+    }
+});
+
+// Obs≈Çuga przycisk√≥w w panelu
+client.on('interactionCreate', async (interaction) => {
+    if (!interaction.isButton()) return;
+
+    const [action, targetUserId] = interaction.customId.split('_');
+    const targetUser = interaction.guild.members.cache.get(targetUserId)?.user;
+
+    if (!targetUser) {
+        await interaction.reply({ content: 'Nie znaleziono u≈ºytkownika!', ephemeral: true });
+        return;
+    }
+
+    const userInfo = userData.get(targetUserId) || {
+        warnings: [],
+        mutes: 0,
+        flaggedAsUnverified: false,
+        reports: new Set()
+    };
+
+    switch (action) {
+        case 'warn': {
+            const reason = 'Przyk≈Çadowy pow√≥d';
+            userInfo.warnings.push({
+                reason,
+                issuedBy: interaction.user.tag,
+                date: new Date().toLocaleString()
+            });
+            userData.set(targetUserId, userInfo);
+            await interaction.reply(`U≈ºytkownik ${targetUser.tag} otrzyma≈Ç ostrze≈ºenie: ${reason}`);
+            break;
+        }
+        case 'mute': {
+            if (!interaction.member.permissions.has(PermissionsBitField.Flags.ModerateMembers)) {
+                await interaction.reply({ content: 'Nie masz uprawnie≈Ñ do wyciszania u≈ºytkownik√≥w!', ephemeral: true });
+                return;
+            }
+
+            const muteRole = interaction.guild.roles.cache.find(r => r.name === 'Muted');
+            if (!muteRole) {
+                await interaction.reply({ content: 'Rola "Muted" nie zosta≈Ça znaleziona!', ephemeral: true });
+                return;
+            }
+
+            const member = interaction.guild.members.cache.get(targetUserId);
+            if (member) {
+                await member.roles.add(muteRole, 'Mute przez bota');
+                userInfo.mutes += 1;
+                userData.set(targetUserId, userInfo);
+                await interaction.reply(`U≈ºytkownik ${targetUser.tag} zosta≈Ç wyciszony.`);
+            } else {
+                await interaction.reply('Nie znaleziono u≈ºytkownika na serwerze.');
+            }
+            break;
+        }
+        case 'report': {
+            if (userInfo.reports.has(interaction.user.id)) {
+                await interaction.reply({ content: 'Ju≈º zg≈Çosi≈Çe≈õ tego u≈ºytkownika!', ephemeral: true });
+                return;
+            }
+
+            userInfo.reports.add(interaction.user.id);
+            userData.set(targetUserId, userInfo);
+            await interaction.reply(`Zg≈Çosi≈Çe≈õ u≈ºytkownika ${targetUser.tag}. Liczba zg≈Çosze≈Ñ: ${userInfo.reports.size}/${BAN_THRESHOLD}`);
+
+            if (userInfo.reports.size >= BAN_THRESHOLD) {
+                try {
+                    await interaction.guild.members.ban(targetUserId, { reason: 'Przekroczenie progu zg≈Çosze≈Ñ.' });
+                    await interaction.followUp(`U≈ºytkownik ${targetUser.tag} zosta≈Ç zbanowany za przekroczenie limitu zg≈Çosze≈Ñ.`);
+                } catch (error) {
+                    console.error(`Nie uda≈Ço siƒô zbanowaƒá u≈ºytkownika: ${error}`);
+                }
+            }
+            break;
+        }
+    }
+});
+
+// Logowanie bota
+client.login(process.env.TOKEN);
